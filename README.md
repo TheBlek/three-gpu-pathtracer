@@ -14,6 +14,8 @@ _More features and capabilities in progress!_
 
 # Examples
 
+[GLB Drag and Drop Viewer](https://gkjohnson.github.io/three-gpu-pathtracer/example/bundle/viewer.html)
+
 **Setup**
 
 [Basic glTF Setup Example](https://gkjohnson.github.io/three-gpu-pathtracer/example/bundle/basic.html)
@@ -107,7 +109,7 @@ import { BlurredEnvMapGenerator } from 'three-gpu-pathtracer';
 
 // ...
 
-const envMap = await new RGBELoader().setDataType( THREE.FloatType ).loadAsync( envMapUrl );
+const envMap = await new HDRLoader().setDataType( THREE.FloatType ).loadAsync( envMapUrl );
 const generator = new BlurredEnvMapGenerator( renderer );
 const blurredEnvMap = generator.generate( envMap, 0.35 );
 
