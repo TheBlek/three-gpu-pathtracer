@@ -9,106 +9,6 @@ import {
 
 const samplesEl = document.getElementById( 'samples' );
 
-// TODO: replace with _renderer.compute when indirect dispatch is merged and available
-function computeIndirect( renderer, computeNodes, buffer ) {
-
-	if ( renderer._isDeviceLost === true ) return;
-
-	if ( renderer._initialized === false ) {
-
-		console.warn( 'THREE.Renderer: .compute() called before the backend is initialized. Try using .computeAsync() instead.' );
-		return renderer.computeAsync( computeNodes );
-
-	}
-
-	//
-	const nodeFrame = renderer._nodes.nodeFrame;
-	const previousRenderId = nodeFrame.renderId;
-	//
-	renderer.info.calls ++;
-	renderer.info.compute.calls ++;
-	renderer.info.compute.frameCalls ++;
-	nodeFrame.renderId = renderer.info.calls;
-	//
-	const backend = renderer.backend;
-	const pipelines = renderer._pipelines;
-	const bindings = renderer._bindings;
-	const nodes = renderer._nodes;
-	const computeList = Array.isArray( computeNodes ) ? computeNodes : [ computeNodes ];
-	if ( computeList[ 0 ] === undefined || computeList[ 0 ].isComputeNode !== true ) {
-
-		throw new Error( 'THREE.Renderer: .compute() expects a ComputeNode.' );
-
-	}
-
-	backend.beginCompute( computeNodes );
-	for ( const computeNode of computeList ) {
-
-		// onInit
-		if ( pipelines.has( computeNode ) === false ) {
-
-			const dispose = () => {
-
-				computeNode.removeEventListener( 'dispose', dispose );
-				pipelines.delete( computeNode );
-				bindings.delete( computeNode );
-				nodes.delete( computeNode );
-
-			};
-
-			computeNode.addEventListener( 'dispose', dispose );
-			//
-			const onInitFn = computeNode.onInitFunction;
-			if ( onInitFn !== null ) {
-
-				onInitFn.call( computeNode, { renderer: renderer } );
-
-			}
-
-		}
-
-		nodes.updateForCompute( computeNode );
-		bindings.updateForCompute( computeNode );
-		const computeBindings = bindings.getForCompute( computeNode );
-		const computePipeline = pipelines.getForCompute( computeNode, computeBindings );
-
-		computeBackendIndirect( backend, computeNodes, computeNode, computeBindings, computePipeline, buffer );
-
-	}
-
-	backend.finishCompute( computeNodes );
-	//
-	nodeFrame.renderId = previousRenderId;
-
-}
-
-function computeBackendIndirect( backend, computeGroup, computeNode, bindings, pipeline, buffer ) {
-
-	const { passEncoderGPU } = backend.get( computeGroup );
-
-	// pipeline
-
-	const pipelineGPU = backend.get( pipeline ).pipeline;
-
-	backend.pipelineUtils.setPipeline( passEncoderGPU, pipelineGPU );
-
-	// bind groups
-
-	for ( let i = 0, l = bindings.length; i < l; i ++ ) {
-
-		const bindGroup = bindings[ i ];
-		const bindingsData = backend.get( bindGroup );
-
-		passEncoderGPU.setBindGroup( i, bindingsData.group );
-
-	}
-
-	const dispatchBuffer = backend.get( buffer ).buffer;
-
-	passEncoderGPU.dispatchWorkgroupsIndirect( dispatchBuffer, 0 );
-
-}
-
 function* renderTask() {
 
 	while ( true ) {
@@ -134,20 +34,28 @@ function* renderTask() {
 				Math.ceil( dimensions.y / WORKGROUP_SIZE[ 1 ] ),
 				1,
 			];
+			// 0. Clean queues
 			_renderer.compute( this.cleanQueuesKernel, 1 );
+			// 0.1 Generate one ray per pixel and write it into ray queue
 			_renderer.compute( this.generateRaysKernel, dispatchSize );
 
 			for ( let i = 0; i < this.bounces; i ++ ) {
 
-				// 1. Trace rays
+				// 1. Trace rays from the ray queue
+				// Traced ray can either hit something - then it goes into the hitResultQueue
+				// If it doesn't hit anything it goes into the escapedRayQueue
 				_renderer.compute( this.writeTraceRayDispatchSizeKernel, 1 );
-				computeIndirect( _renderer, this.traceRayKernel, this.traceRayDispatchBuffer );
+				_renderer.compute( this.traceRayKernel, this.traceRayDispatchBuffer );
 
 				// 2. Handle escaped and scattered rays
+				// 2.1 Calcuate dispatch sizes and write it to gpu buffer
 				_renderer.compute( this.writeEscapedRayDispatchSizeKernel, 1 );
 				_renderer.compute( this.writeBsdfDispatchSizeKernel, 1 );
-				computeIndirect( _renderer, this.escapedRayKernel, this.escapedRayDispatchBuffer );
-				computeIndirect( _renderer, this.bsdfEvalKernel, this.bsdfDispatchBuffer );
+				// 2.1 Dispatch shaders
+				// When processing escaped rays, calculate new contribution and add that to the result image
+				_renderer.compute( this.escapedRayKernel, this.escapedRayDispatchBuffer );
+				// When processing hit results, sample a new ray according to material's properties
+				_renderer.compute( this.bsdfEvalKernel, this.bsdfDispatchBuffer );
 
 			}
 
