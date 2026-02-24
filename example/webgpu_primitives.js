@@ -5,6 +5,7 @@ import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 
 const options = {
 	useMegakernel: true,
+	spheres: false,
 };
 
 // init scene, renderer, camera, controls, etc
@@ -85,6 +86,22 @@ gui.add( options, 'useMegakernel' ).onChange( () => {
 
 } );
 
+gui.add( options, 'spheres' ).onChange( () => {
+
+	if ( options.spheres ) {
+
+		scene.remove( ball1 );
+
+	} else {
+
+		scene.add( ball1 );
+
+	}
+
+	pathTracer.setScene( scene, camera );
+	pathTracer.reset();
+
+} );
 
 onResize();
 

@@ -102,6 +102,8 @@ export class MegaKernelPathTracer {
 	setBVHData( bvhData ) {
 
 		this.kernel.bvhData = bvhData;
+		// Try uncommenting this line to see scene change
+		// this.kernel.setWorkgroupSize( 8, 8, 1 );
 		this.reset();
 
 	}
