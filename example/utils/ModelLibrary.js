@@ -3,6 +3,9 @@ import { FogVolumeMaterial } from 'three-gpu-pathtracer';
 import { ColladaLoader, GLTFLoader, LDrawConditionalLineMaterial, LDrawLoader, LDrawUtils } from 'three/examples/jsm/Addons.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
+const MATERIALS_URL = 'https://raw.githubusercontent.com/gkjohnson/ldraw-parts-library/master/colors/ldcfgalt.ldr';
+const PARTS_URL = 'https://raw.githubusercontent.com/gkjohnson/ldraw-parts-library/master/complete/ldraw/';
+
 export const MODELS = {
 	'M2020 Rover': {
 		url: 'https://raw.githubusercontent.com/gkjohnson/3d-demo-data/main/models/nasa-m2020/Perseverance.glb',
@@ -524,9 +527,9 @@ export async function loadModel( url, onProgress ) {
 		const complete = new Promise( resolve => manager.onLoad = resolve );
 		const ldrawLoader = new LDrawLoader( manager );
 		ldrawLoader.setConditionalLineMaterial( LDrawConditionalLineMaterial );
-		await ldrawLoader.preloadMaterials( 'https://raw.githubusercontent.com/gkjohnson/ldraw-parts-library/master/colors/ldcfgalt.ldr' );
+		await ldrawLoader.preloadMaterials( MATERIALS_URL );
 		const result = await ldrawLoader
-			.setPartsLibraryPath( 'https://raw.githubusercontent.com/gkjohnson/ldraw-parts-library/master/complete/ldraw/' )
+			.setPartsLibraryPath( PARTS_URL )
 			.loadAsync( url );
 		await complete;
 
