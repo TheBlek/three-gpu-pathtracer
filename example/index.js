@@ -1,26 +1,17 @@
 import {
 	ACESFilmicToneMapping,
 	NoToneMapping,
-	Box3,
-	LoadingManager,
-	Sphere,
 	DoubleSide,
 	Mesh,
 	MeshStandardMaterial,
 	PlaneGeometry,
-	MeshPhysicalMaterial,
 	Scene,
 	PerspectiveCamera,
 	OrthographicCamera,
 	WebGPURenderer,
 	EquirectangularReflectionMapping,
 } from 'three/webgpu';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
-import { LDrawLoader } from 'three/examples/jsm/loaders/LDrawLoader.js';
-import { LDrawUtils } from 'three/examples/jsm/utils/LDrawUtils.js';
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { generateRadialFloorTexture } from './utils/generateRadialFloorTexture.js';
@@ -29,8 +20,7 @@ import { WebGPUPathTracer } from 'three-gpu-pathtracer/webgpu';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { getScaledSettings } from './utils/getScaledSettings.js';
 import { LoaderElement } from './utils/LoaderElement.js';
-import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
-import { MODELS } from './utils/ModelLibrary.js';
+import { disposeModel, loadModelToScene, MODELS } from './utils/ModelLibrary.js';
 
 const envMaps = {
 	'Royal Esplanade': 'https://raw.githubusercontent.com/mrdoob/three.js/r150/examples/textures/equirectangular/royal_esplanade_1k.hdr',
@@ -473,63 +463,6 @@ function updateCameraProjection( cameraProjection ) {
 
 }
 
-function convertOpacityToTransmission( model, ior ) {
-
-	model.traverse( c => {
-
-		if ( c.material ) {
-
-			const material = c.material;
-			if ( material.opacity < 0.65 && material.opacity > 0.2 ) {
-
-				const newMaterial = new MeshPhysicalMaterial();
-				for ( const key in material ) {
-
-					if ( key in material ) {
-
-						if ( material[ key ] === null ) {
-
-							continue;
-
-						}
-
-						if ( material[ key ].isTexture ) {
-
-							newMaterial[ key ] = material[ key ];
-
-						} else if ( material[ key ].copy && material[ key ].constructor === newMaterial[ key ].constructor ) {
-
-							newMaterial[ key ].copy( material[ key ] );
-
-						} else if ( ( typeof material[ key ] ) === 'number' ) {
-
-							newMaterial[ key ] = material[ key ];
-
-						}
-
-					}
-
-				}
-
-				newMaterial.opacity = 1.0;
-				newMaterial.transmission = 1.0;
-				newMaterial.ior = ior;
-
-				const hsl = {};
-				newMaterial.color.getHSL( hsl );
-				hsl.l = Math.max( hsl.l, 0.35 );
-				newMaterial.color.setHSL( hsl.h, hsl.s, hsl.l );
-
-				c.material = newMaterial;
-
-			}
-
-		}
-
-	} );
-
-}
-
 async function updateModel() {
 
 	if ( gui ) {
@@ -540,115 +473,31 @@ async function updateModel() {
 
 	}
 
+	if ( model ) {
+
+		disposeModel( model );
+
+	}
+
 	const modelInfo = models[ params.model ];
 
 	renderer.domElement.style.visibility = 'hidden';
-	loader.setPercentage( 0 );
 
-	if ( model ) {
+	const onProgress = ( v ) => loader.setPercentage( 0.5 * v );
 
-		model.traverse( c => {
+	const { model: newModel, box, error } = await loadModelToScene( scene, renderer, modelInfo, onProgress );
+	model = newModel;
 
-			if ( c.material ) {
 
-				const material = c.material;
-				for ( const key in material ) {
+	if ( error ) {
 
-					if ( material[ key ] && material[ key ].isTexture ) {
-
-						material[ key ].dispose();
-
-					}
-
-				}
-
-			}
-
-		} );
-
-		scene.remove( model );
-		model = null;
-
-	}
-
-	try {
-
-		model = await loadModel( modelInfo.url, v => {
-
-			loader.setPercentage( 0.5 * v );
-
-		} );
-
-	} catch ( err ) {
-
-		loader.setCredits( 'Failed to load model:' + err.message );
+		loader.setCredits( 'Failed to load model:' + error );
 		loader.setPercentage( 1 );
+		return;
 
 	}
 
-	// update after model load
-	// TODO: clean up
-	if ( modelInfo.removeEmission ) {
-
-		model.traverse( c => {
-
-			if ( c.material ) {
-
-				c.material.emissiveMap = null;
-				c.material.emissiveIntensity = 0;
-
-			}
-
-		} );
-
-	}
-
-	if ( modelInfo.opacityToTransmission ) {
-
-		convertOpacityToTransmission( model, modelInfo.ior || 1.5 );
-
-	}
-
-	model.traverse( c => {
-
-		if ( c.material ) {
-
-			// set the thickness so we render the material as a volumetric object
-			c.material.thickness = 1.0;
-
-		}
-
-	} );
-
-	if ( modelInfo.postProcess ) {
-
-		modelInfo.postProcess( model );
-
-	}
-
-	// rotate model after so it doesn't affect the bounding sphere scale
-	if ( modelInfo.rotation ) {
-
-		model.rotation.set( ...modelInfo.rotation );
-
-	}
-
-	// center the model
-	const box = new Box3();
-	box.setFromObject( model );
-	model.position
-		.addScaledVector( box.min, - 0.5 )
-		.addScaledVector( box.max, - 0.5 );
-
-	const sphere = new Sphere();
-	box.getBoundingSphere( sphere );
-
-	model.scale.setScalar( 1 / sphere.radius );
-	model.position.multiplyScalar( 1 / sphere.radius );
-	box.setFromObject( model );
 	floorPlane.position.y = box.min.y;
-
-	scene.add( model );
 
 	pathTracer.setScene( scene, activeCamera );
 
@@ -668,110 +517,6 @@ async function updateModel() {
 	if ( params.checkerboardTransparency ) {
 
 		document.body.classList.add( 'checkerboard' );
-
-	}
-
-}
-
-async function loadModel( url, onProgress ) {
-
-	// TODO: clean up
-	const manager = new LoadingManager();
-	if ( /dae$/i.test( url ) ) {
-
-		const complete = new Promise( resolve => manager.onLoad = resolve );
-		const res = await new ColladaLoader( manager ).loadAsync( url, progress => {
-
-			if ( progress.total !== 0 && progress.total >= progress.loaded ) {
-
-				onProgress( progress.loaded / progress.total );
-
-			}
-
-		} );
-		await complete;
-
-		res.scene.scale.setScalar( 1 );
-		res.scene.traverse( c => {
-
-			const { material } = c;
-			if ( material && material.isMeshPhongMaterial ) {
-
-				c.material = new MeshStandardMaterial( {
-
-					color: material.color,
-					roughness: material.roughness || 0,
-					metalness: material.metalness || 0,
-					map: material.map || null,
-
-				} );
-
-			}
-
-		} );
-
-		return res.scene;
-
-	} else if ( /(gltf|glb)$/i.test( url ) ) {
-
-		const complete = new Promise( resolve => manager.onLoad = resolve );
-		const gltf = await new GLTFLoader( manager ).setMeshoptDecoder( MeshoptDecoder ).loadAsync( url, progress => {
-
-			if ( progress.total !== 0 && progress.total >= progress.loaded ) {
-
-				onProgress( progress.loaded / progress.total );
-
-			}
-
-		} );
-		await complete;
-
-		return gltf.scene;
-
-	} else if ( /mpd$/i.test( url ) ) {
-
-		manager.onProgress = ( url, loaded, total ) => {
-
-			onProgress( loaded / total );
-
-		};
-
-		const complete = new Promise( resolve => manager.onLoad = resolve );
-		const ldrawLoader = new LDrawLoader( manager );
-		ldrawLoader.setConditionalLineMaterial( LDrawConditionalLineMaterial );
-		await ldrawLoader.preloadMaterials( 'https://raw.githubusercontent.com/gkjohnson/ldraw-parts-library/master/colors/ldcfgalt.ldr' );
-		const result = await ldrawLoader
-			.setPartsLibraryPath( 'https://raw.githubusercontent.com/gkjohnson/ldraw-parts-library/master/complete/ldraw/' )
-			.loadAsync( url );
-		await complete;
-
-		const model = LDrawUtils.mergeObject( result );
-		model.rotation.set( Math.PI, 0, 0 );
-
-		const toRemove = [];
-		model.traverse( c => {
-
-			if ( c.isLineSegments ) {
-
-				toRemove.push( c );
-
-			}
-
-			if ( c.isMesh ) {
-
-				c.material.roughness *= 0.25;
-
-			}
-
-		} );
-
-		toRemove.forEach( c => {
-
-			c.parent.remove( c );
-
-		} );
-
-		return model;
 
 	}
 

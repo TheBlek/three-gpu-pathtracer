@@ -1,4 +1,4 @@
-import { MeshPhysicalMaterial, Color, DoubleSide, Mesh, CylinderGeometry, Box3, LoadingManager, MeshStandardMaterial } from 'three';
+import { MeshPhysicalMaterial, Color, DoubleSide, Mesh, CylinderGeometry, Box3, LoadingManager, MeshStandardMaterial, Sphere } from 'three';
 import { FogVolumeMaterial } from 'three-gpu-pathtracer';
 import { ColladaLoader, GLTFLoader, LDrawConditionalLineMaterial, LDrawLoader, LDrawUtils } from 'three/examples/jsm/Addons.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
@@ -344,7 +344,7 @@ export const MODELS = {
 
 };
 
-function disposeModel( model ) {
+export function disposeModel( model ) {
 
 	const parent = model.parent;
 	parent.remove( model );
@@ -375,7 +375,7 @@ function disposeModel( model ) {
 
 }
 
-async function loadModelToScene( scene, renderer, modelInfo, onProgress ) {
+export async function loadModelToScene( scene, renderer, modelInfo, onProgress ) {
 
 	onProgress( 0 );
 
@@ -387,7 +387,7 @@ async function loadModelToScene( scene, renderer, modelInfo, onProgress ) {
 
 	} catch ( err ) {
 
-		return { error: 'Failed to load model:' + err.message };
+		return { error: err.message };
 
 	}
 
@@ -451,13 +451,14 @@ async function loadModelToScene( scene, renderer, modelInfo, onProgress ) {
 	model.scale.setScalar( 1 / sphere.radius );
 	model.position.multiplyScalar( 1 / sphere.radius );
 	box.setFromObject( model );
-	floorPlane.position.y = box.min.y;
 
 	scene.add( model );
 
+	return { model, box };
+
 }
 
-async function loadModel( url, onProgress ) {
+export async function loadModel( url, onProgress ) {
 
 	// TODO: clean up
 	const manager = new LoadingManager();
@@ -561,7 +562,7 @@ async function loadModel( url, onProgress ) {
 
 }
 
-function convertOpacityToTransmission( model, ior ) {
+export function convertOpacityToTransmission( model, ior ) {
 
 	model.traverse( c => {
 

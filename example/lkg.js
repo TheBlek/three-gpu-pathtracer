@@ -1,14 +1,12 @@
 import {
 	ACESFilmicToneMapping,
 	Box3,
-	LoadingManager,
 	Sphere,
 	DoubleSide,
 	Mesh,
 	MeshStandardMaterial,
 	PlaneGeometry,
 	Group,
-	MeshPhysicalMaterial,
 	WebGLRenderer,
 	Scene,
 	MeshBasicMaterial,
@@ -18,8 +16,6 @@ import {
 	Vector4
 } from 'three';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
-import { LDrawLoader } from 'three/examples/jsm/loaders/LDrawLoader.js';
-import { LDrawUtils } from 'three/examples/jsm/utils/LDrawUtils.js';
 import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { generateRadialFloorTexture } from './utils/generateRadialFloorTexture.js';
@@ -32,6 +28,7 @@ import { QuiltPathTracingRenderer } from '../src/core/QuiltPathTracingRenderer.j
 
 import { LookingGlassWebXRPolyfill, LookingGlassConfig } from '@lookingglass/webxr';
 import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
+import { loadModel, convertOpacityToTransmission } from './utils/ModelLibrary.js';
 
 // lkg display constants
 const LKG_WIDTH = 420;
@@ -175,8 +172,7 @@ async function init() {
 
 	// load the lego model
 	let failed = false;
-	const manager = new LoadingManager();
-	manager.onProgress = ( url, loaded, total ) => {
+	const onProgress = ( url, loaded, total ) => {
 
 		if ( failed ) {
 
@@ -191,40 +187,8 @@ async function init() {
 
 	// Load the lego model
 	let generator;
-	const loader = new LDrawLoader( manager );
-	await loader.preloadMaterials( MATERIALS_URL );
-	loader
-		.setPartsLibraryPath( PARTS_PATH )
-		.loadAsync( MODELS[ params.model ] )
-		.then( result => {
-
-			// get a merged version of the model
-			const model = LDrawUtils.mergeObject( result );
-			model.rotation.set( Math.PI, 0, 0 );
-
-			// remove the non mesh components
-			const toRemove = [];
-			model.traverse( c => {
-
-				if ( c.isLineSegments ) {
-
-					toRemove.push( c );
-
-				}
-
-				if ( c.isMesh ) {
-
-					c.material.roughness *= 0.25;
-
-				}
-
-			} );
-
-			toRemove.forEach( c => {
-
-				c.parent.remove( c );
-
-			} );
+	loadModel( MODELS[ params.model ], onProgress )
+		.then( ( model ) => {
 
 			// conver materials
 			convertOpacityToTransmission( model, 1.4 );
@@ -551,63 +515,5 @@ function buildGui() {
 	quiltPreviewFolder.add( params, 'tiltingPreview' );
 	quiltPreviewFolder.add( params, 'animationSpeed', 0, 2 );
 	quiltPreviewFolder.open();
-
-}
-
-function convertOpacityToTransmission( model, ior ) {
-
-	model.traverse( c => {
-
-		if ( c.material ) {
-
-			const material = c.material;
-			if ( material.opacity < 0.65 && material.opacity > 0.2 ) {
-
-				const newMaterial = new MeshPhysicalMaterial();
-				for ( const key in material ) {
-
-					if ( key in material ) {
-
-						if ( material[ key ] === null ) {
-
-							continue;
-
-						}
-
-						if ( material[ key ].isTexture ) {
-
-							newMaterial[ key ] = material[ key ];
-
-						} else if ( material[ key ].copy && material[ key ].constructor === newMaterial[ key ].constructor ) {
-
-							newMaterial[ key ].copy( material[ key ] );
-
-						} else if ( ( typeof material[ key ] ) === 'number' ) {
-
-							newMaterial[ key ] = material[ key ];
-
-						}
-
-					}
-
-				}
-
-				newMaterial.opacity = 1.0;
-				newMaterial.transmission = 1.0;
-				newMaterial.thickness = 1.0;
-				newMaterial.ior = ior;
-
-				const hsl = {};
-				newMaterial.color.getHSL( hsl );
-				hsl.l = Math.max( hsl.l, 0.35 );
-				newMaterial.color.setHSL( hsl.h, hsl.s, hsl.l );
-
-				c.material = newMaterial;
-
-			}
-
-		}
-
-	} );
 
 }
