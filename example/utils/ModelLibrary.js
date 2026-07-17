@@ -362,7 +362,7 @@ export function disposeModel( model ) {
 
 			for ( const key in material ) {
 
-				if ( material[ key ].isTexture ) {
+				if ( material[ key ]?.isTexture ) {
 
 					material[ key ].dispose();
 

@@ -1,12 +1,15 @@
-import { ACESFilmicToneMapping, Vector2, WebGLRenderer } from 'three';
+import { ACESFilmicToneMapping, EquirectangularReflectionMapping, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 import { WebGPURenderer } from 'three/webgpu';
 import { WebGPUPathTracer } from '../src/webgpu';
 import { WebGLPathTracer } from '../src';
 import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
+import { disposeModel, loadModelToScene, MODELS } from './utils/ModelLibrary';
+import { HDRLoader } from 'three/examples/jsm/Addons.js';
+import { ENV_MAPS } from './utils/EnvMaps';
 
-const modelLibrary = {
-
-};
+// TODO: make a tool that will go through a matrix of configurations,
+// Plot avg sample count / pixel over time for two implementation (median + min/max + line that connects median values)
+// Add ability to checkout a repository to run the benchmark on that data
 
 let gui;
 
@@ -19,15 +22,14 @@ const params = {
 	isWebGPU: false,
 	useMegakernel: true,
 
-	bounce: 10,
+	bounces: 10,
 	tileCount: 3,
-	iterationsPerFrame: 1,
 
 	resolution: 1024,
 	model: '',
 
 	// Stop condition
-	targetTimeSeconds: 10,
+	targetTimeSeconds: 10, // TODO: remove?
 	targetSampleCount: 64,
 
 	// Button property
@@ -41,27 +43,31 @@ const params = {
 
 };
 
+params.model = Object.keys( MODELS )[ 0 ];
+
 function areParamsValid() {
 
-	return params.model in modelLibrary && ( params.targetSampleCount > 0 || params.targetTimeSeconds > 0 );
+	return params.model in MODELS && ( params.targetSampleCount > 0 || params.targetTimeSeconds > 0 );
 
 }
 
-function createRenderer( params ) {
+async function createRenderer( params ) {
 
 	if ( params.isWebGPU ) {
 
 		const renderer = new WebGPURenderer();
-		renderer.init();
+		await renderer.init();
 		renderer.toneMapping = ACESFilmicToneMapping;
 		renderer.setDrawingBufferSize( params.resolution, params.resolution, 1.0 );
 		document.body.append( renderer.domElement );
 
 		const pathtracer = new WebGPUPathTracer( renderer );
+		pathtracer.useMegakernel( params.useMegakernel );
 		pathtracer.tiles.set( params.tileCount, params.tileCount );
 		pathtracer.bounces = params.bounces;
-		pathtracer.useMegakernel( params.useMegakernel );
 		pathtracer.setSize( params.resolution, params.resolution );
+		pathtracer.dynamicLowRes = false;
+		pathtracer.renderDelay = 0;
 
 		return { renderer, pathtracer };
 
@@ -75,6 +81,7 @@ function createRenderer( params ) {
 		const pathtracer = new WebGLPathTracer( renderer );
 		pathtracer.tiles.set( params.tileCount, params.tileCount );
 		pathtracer.bounces = params.bounces;
+		pathtracer.rasterizeScene = false;
 
 		return { renderer, pathtracer };
 
@@ -82,56 +89,75 @@ function createRenderer( params ) {
 
 }
 
-function runIteration( pathtracer, params ) {
+function cleanup( renderer, pathtracer ) {
 
-	return new Promise( ( resolve ) => {
+	pathtracer.dispose();
+	renderer.domElement.remove();
+	renderer.dispose();
 
-		const startTime = performance.now();
+}
 
-		const shouldFinish = () => {
+async function runIteration( renderer, pathtracer, params ) {
 
-			if ( params.targetSampleCount > 0 && pathtracer.samples > params.targetSampleCount ) {
+	// Schedule N renderFrames in pathtracer; What's N for wavefront?
+	// Fence
+	// Get actual information
+	// Calcuate resulting throughput
+	// Return
 
-				return true;
+	const waitGpuIdle = async () => {
 
-			}
+		if ( params.isWebGPU ) {
 
-			const elapsedSeconds = ( performance.now() - startTime ) / 1000;
-			if ( params.targetTimeSeconds > 0 && elapsedSeconds > params.targetTimeSeconds ) {
+			await renderer.backend.device.queue.onSubmittedWorkDone();
 
-				return true;
+		} else {
 
-			}
+			const gl = renderer.getContext();
+			const sync = gl.fenceSync( gl.SYNC_GPU_COMMANDS_COMPLETE, 0 );
+			gl.flush();
+			// poll with 0 timeout so you don't hard-block the main thread forever
+			while ( gl.clientWaitSync( sync, 0, 0 ) === gl.TIMEOUT_EXPIRED ) {
 
-			return false;
-
-		};
-
-		const frame = () => {
-
-			if ( shouldFinish() ) {
-
-				// TODO: wait for gpu commands to finish
-				const endTime = performance.now();
-				const elapsedMs = endTime - startTime;
-				resolve( { elapsedMs } );
+				await new Promise( r => setTimeout( r, 0 ) );
 
 			}
 
-			requestAnimationFrame( frame );
+			gl.deleteSync( sync );
 
-			for ( let i = 0; i < params.iterationsPerFrame; i ++ ) {
+		}
 
-				pathtracer.renderSample();
+	};
 
-			}
+	let iterationCount = params.tileCount * params.tileCount * params.targetSampleCount;
+	if ( params.isWebGPU && ! params.useMegakernel ) {
 
-		};
+		iterationCount = ( params.bounces / 2 ) * params.targetSampleCount * params.resolution * params.resolution / 250000;
 
-		frame();
+	}
 
+	await waitGpuIdle();
 
-	} );
+	const start = performance.now();
+	for ( let i = 0; i < iterationCount; i ++ ) {
+
+		pathtracer.renderSample();
+
+	}
+
+	const cpuEnd = performance.now();
+
+	await waitGpuIdle();
+
+	const end = performance.now();
+
+	const elapsedMs = end - start;
+	const samples = await pathtracer.getDetailedSampleCount();
+	const samplesPerSecond = ( samples.total * 1000 ) / elapsedMs;
+
+	console.log( `cpu time: ${ cpuEnd - start }; gpu time: ${ end - start }` );
+
+	return { totalSamples: samples.total, elapsedMs, samplesPerSecond };
 
 }
 
@@ -143,21 +169,51 @@ async function runBenchmark() {
 
 	}
 
-	const { renderer, pathtracer } = createRenderer( params );
+	const { renderer, pathtracer } = await createRenderer( params );
+
+	const scene = new Scene();
+
+	const envMapPromise = new HDRLoader().loadAsync( ENV_MAPS[ 'Measuring Lab' ] );
+
+	const { model, box, error } = await loadModelToScene( scene, renderer, MODELS[ params.model ], () => {} );
+
+	if ( error ) {
+
+		return { error };
+
+	}
+
+	const aspect = 1; // Benchmarking on squares for now
+	const perspectiveCamera = new PerspectiveCamera( 60, aspect, 0.025, 500 );
+	perspectiveCamera.position.set( - 1, 0.25, 1 );
+	perspectiveCamera.lookAt( 0, 0, 0 );
+	perspectiveCamera.updateMatrixWorld();
+
+	const envMap = await envMapPromise;
+	envMap.mapping = EquirectangularReflectionMapping;
+	scene.environment = envMap;
+
+	pathtracer.setScene( scene, perspectiveCamera );
 
 	for ( let wIter = 0; wIter < params.warmupIterations; wIter ++ ) {
 
-		await runIteration( pathtracer, params );
+		pathtracer.reset();
+		await runIteration( renderer, pathtracer, params );
 
 	}
 
 	const results = [];
 	for ( let iter = 0; iter < params.iterations; iter ++ ) {
 
-		const res = await runIteration( pathtracer, params );
-		results.push( res.elapsedMs );
+		pathtracer.reset();
+		const res = await runIteration( renderer, pathtracer, params );
+		results.push( res );
 
 	}
+
+	disposeModel( model );
+
+	cleanup( renderer, pathtracer );
 
 	return results;
 
@@ -182,19 +238,20 @@ function buildGUI() {
 	stopCondition.add( params, 'targetSampleCount' );
 
 	const renderingSettings = gui.addFolder( 'Rendering Settings' );
-
-	renderingSettings.add( params, 'model', Object.keys( modelLibrary ).sort() ).onChange( v => {
-
-		window.location.hash = v;
-
-	} );
 	renderingSettings.add( params, 'isWebGPU' );
 	renderingSettings.add( params, 'useMegakernel' );
 
 	renderingSettings.add( params, 'tileCount' );
-	renderingSettings.add( params, 'iterationsPerFrame' );
 
 	renderingSettings.add( params, 'resolution' );
+	renderingSettings.add( params, 'bounces', 1, 30 );
+
+	const sceneSettings = gui.addFolder( 'Scene Settings' );
+	sceneSettings.add( params, 'model', Object.keys( MODELS ).sort() ).onChange( v => {
+
+		window.location.hash = v;
+
+	} );
 
 	// TODO: physical camera settings?
 

@@ -643,15 +643,10 @@ export class WebGPUPathTracer {
 		this._pathTracer.dispose();
 		this._blitQuad.dispose();
 		this._lowResTarget.dispose();
-		this._envColorTexture.dispose();
-		this._backgroundColorTexture.dispose();
+		this._envColorTexture?.dispose();
+		this._backgroundColorTexture?.dispose();
 		this._atlasDebugQuad?.dispose();
-
-		if ( this._debugBoundsQuad !== undefined ) {
-
-			this._debugBoundsQuad.dispose();
-
-		}
+		this._debugBoundsQuad?.dispose();
 
 	}
 
@@ -697,6 +692,7 @@ export class WebGPUPathTracer {
 		return {
 			min: minSamples,
 			max: maxSamples,
+			total: totalSamples,
 			avg: Math.floor( totalSamples / ( width * height ) ),
 		};
 

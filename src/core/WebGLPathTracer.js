@@ -532,9 +532,12 @@ export class WebGLPathTracer {
 
 	async getDetailedSampleCount() {
 
+		this._pathTracer.getSize( _resolution );
+
 		return {
 			min: this.samples,
 			max: this.samples,
+			total: this.samples * _resolution.x * _resolution.y,
 			avg: this.samples,
 		};
 
