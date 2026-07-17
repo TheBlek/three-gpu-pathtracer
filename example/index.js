@@ -30,6 +30,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { getScaledSettings } from './utils/getScaledSettings.js';
 import { LoaderElement } from './utils/LoaderElement.js';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
+import { MODELS } from './utils/ModelLibrary.js';
 
 const envMaps = {
 	'Royal Esplanade': 'https://raw.githubusercontent.com/mrdoob/three.js/r150/examples/textures/equirectangular/royal_esplanade_1k.hdr',
@@ -128,24 +129,9 @@ const orthoWidth = 2;
 
 init();
 
-async function waitFrame() {
-
-	return new Promise( resolve => requestAnimationFrame( resolve ) );
-
-}
-
 async function init() {
 
-	// Wait for the models list to be available since vite doesn't guarantee execution order
-	// of module tags and we rely on the other script to define the set of models for display
-	// in this example. TODO: handle this more gracefully.
-	while ( ! window.MODEL_LIST ) {
-
-		await waitFrame();
-
-	}
-
-	models = window.MODEL_LIST || {};
+	models = MODELS;
 
 	loader = new LoaderElement();
 	loader.attach( document.body );
