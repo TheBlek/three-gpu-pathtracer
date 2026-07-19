@@ -163,6 +163,7 @@ function fillCard( card, res ) {
 
 	header += ' · ' + params.model;
 	header += ' · ' + params.resolution + 'px';
+	header += ' · ' + params.targetSampleCount + ' samples';
 	header += ' · ' + params.iterations + ' runs';
 
 	let dataHtml = '<div class="header">' + header + '</div>';
