@@ -41,6 +41,48 @@ const params = {
 	downloadCSV: downloadCSV,
 };
 
+function getConfigHeader( params ) {
+
+	let header = params.isWebGPU ? 'WebGPU' : 'WebGL';
+	if ( params.isWebGPU ) {
+
+		header += params.useMegakernel ? ' · megakernel' : ' · wavefront';
+
+	}
+
+	header += ' · ' + params.model;
+	header += ' · ' + params.resolution + 'px';
+	header += ' · ' + params.targetSampleCount + ' samples';
+	header += ' · ' + params.iterations + ' runs';
+
+	return header;
+
+}
+
+function createCard() {
+
+	const card = document.createElement( 'div' );
+	card.className = 'card';
+
+	const headerEl = document.createElement( 'div' );
+	headerEl.className = 'header';
+	headerEl.textContent = getConfigHeader( params );
+	card.append( headerEl );
+
+	const bodyEl = document.createElement( 'div' );
+	bodyEl.className = 'card-body';
+
+	const dataEl = document.createElement( 'div' );
+	dataEl.className = 'data';
+	dataEl.textContent = 'Benchmarking...';
+	bodyEl.append( dataEl );
+
+	card.append( bodyEl );
+
+	return card;
+
+}
+
 async function onRunBenchmark() {
 
 	if ( isBenchmarkRunning ) {
@@ -51,9 +93,7 @@ async function onRunBenchmark() {
 
 	isBenchmarkRunning = true;
 
-	const card = document.createElement( 'div' );
-	card.className = 'card';
-	card.textContent = 'Benchmarking...';
+	const card = createCard();
 	resultsEl.prepend( card );
 
 	const res = await runBenchmark();
@@ -143,30 +183,20 @@ function formatSamplesPerSecond( samplesPerSecond ) {
 
 function fillCard( card, res ) {
 
+	const dataEl = card.querySelector( '.data' );
+	const bodyEl = card.querySelector( '.card-body' );
+
 	if ( res.error || ! res.results ) {
 
 		card.classList.add( 'error' );
-		card.textContent = ( res && res.error ) ? res.error : 'Benchmark failed';
+		dataEl.textContent = ( res && res.error ) ? res.error : 'Benchmark failed';
 		return;
 
 	}
 
 	const results = res.results;
 
-	// Header: backend, kernel mode (WebGPU only), model, resolution, run count
-	let header = params.isWebGPU ? 'WebGPU' : 'WebGL';
-	if ( params.isWebGPU ) {
-
-		header += params.useMegakernel ? ' · megakernel' : ' · wavefront';
-
-	}
-
-	header += ' · ' + params.model;
-	header += ' · ' + params.resolution + 'px';
-	header += ' · ' + params.targetSampleCount + ' samples';
-	header += ' · ' + params.iterations + ' runs';
-
-	let dataHtml = '<div class="header">' + header + '</div>';
+	let dataHtml = '';
 
 	const throughputs = [];
 	for ( let i = 0; i < results.length; i ++ ) {
@@ -201,20 +231,25 @@ function fillCard( card, res ) {
 	dataHtml += ' · median ' + formatSamplesPerSecond( medianThroughput );
 	dataHtml += '</div>';
 
-	let html = '<div class="card-body">';
-	html += '<div class="data">' + dataHtml + '</div>';
+	dataEl.innerHTML = dataHtml;
 
 	if ( res.imageUrl ) {
 
-		html += '<a class="preview-link" href="' + res.imageUrl + '" target="_blank" rel="noopener">';
-		html += '<img class="preview" src="' + res.imageUrl + '" alt="benchmark preview" />';
-		html += '</a>';
+		const link = document.createElement( 'a' );
+		link.className = 'preview-link';
+		link.href = res.imageUrl;
+		link.target = '_blank';
+		link.rel = 'noopener';
+
+		const img = document.createElement( 'img' );
+		img.className = 'preview';
+		img.src = res.imageUrl;
+		img.alt = 'benchmark preview';
+		link.append( img );
+
+		bodyEl.append( link );
 
 	}
-
-	html += '</div>';
-
-	card.innerHTML = html;
 
 }
 
