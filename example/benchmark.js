@@ -63,6 +63,12 @@ function getConfigHeader( params ) {
 
 }
 
+function getModelCredit( modelName ) {
+
+	return ALL_MODELS[ modelName ]?.credit || '';
+
+}
+
 function createCard( params ) {
 
 	const card = document.createElement( 'div' );
@@ -72,6 +78,16 @@ function createCard( params ) {
 	headerEl.className = 'header';
 	headerEl.textContent = getConfigHeader( params );
 	card.append( headerEl );
+
+	const credit = getModelCredit( params.model );
+	if ( credit ) {
+
+		const creditEl = document.createElement( 'div' );
+		creditEl.className = 'credit';
+		creditEl.innerHTML = credit;
+		card.append( creditEl );
+
+	}
 
 	const bodyEl = document.createElement( 'div' );
 	bodyEl.className = 'card-body';
