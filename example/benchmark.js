@@ -12,10 +12,11 @@ import { ENV_MAPS } from './utils/EnvMaps';
 // Add ability to checkout a repository to run the benchmark on that data
 
 let gui;
-let isBenchmarkRunning = false;
+let isProcessingQueue = false;
 
 const resultsEl = document.getElementById( 'results' );
 const savedRuns = [];
+const benchmarkQueue = [];
 
 const params = {
 	// Run settings
@@ -59,7 +60,7 @@ function getConfigHeader( params ) {
 
 }
 
-function createCard() {
+function createCard( params ) {
 
 	const card = document.createElement( 'div' );
 	card.className = 'card';
@@ -74,7 +75,7 @@ function createCard() {
 
 	const dataEl = document.createElement( 'div' );
 	dataEl.className = 'data';
-	dataEl.textContent = 'Benchmarking...';
+	dataEl.textContent = 'Queued';
 	bodyEl.append( dataEl );
 
 	card.append( bodyEl );
@@ -83,32 +84,46 @@ function createCard() {
 
 }
 
-async function onRunBenchmark() {
+function onRunBenchmark() {
 
-	if ( isBenchmarkRunning ) {
+	const runParams = { ...params };
+	const card = createCard( runParams );
+	resultsEl.prepend( card );
+	benchmarkQueue.push( { params: runParams, card } );
+	processQueue();
+
+}
+
+async function processQueue() {
+
+	if ( isProcessingQueue ) {
 
 		return;
 
 	}
 
-	isBenchmarkRunning = true;
+	isProcessingQueue = true;
 
-	const card = createCard();
-	resultsEl.prepend( card );
+	while ( benchmarkQueue.length > 0 ) {
 
-	const res = await runBenchmark();
-	fillCard( card, res );
+		const job = benchmarkQueue.shift();
+		job.card.querySelector( '.data' ).textContent = 'Benchmarking...';
 
-	if ( res.results ) {
+		const res = await runBenchmark( job.params );
+		fillCard( job.card, res );
 
-		savedRuns.push( {
-			...params,
-			results: res.results,
-		} );
+		if ( res.results ) {
+
+			savedRuns.push( {
+				...job.params,
+				results: res.results,
+			} );
+
+		}
 
 	}
 
-	isBenchmarkRunning = false;
+	isProcessingQueue = false;
 
 }
 
@@ -275,7 +290,7 @@ function captureImage( renderer ) {
 
 }
 
-function areParamsValid() {
+function areParamsValid( params ) {
 
 	return params.model in MODELS && ( params.targetSampleCount > 0 || params.targetTimeSeconds > 0 );
 
@@ -385,9 +400,9 @@ async function runIteration( renderer, pathtracer, params ) {
 
 }
 
-async function runBenchmark() {
+async function runBenchmark( params ) {
 
-	if ( ! areParamsValid() ) {
+	if ( ! areParamsValid( params ) ) {
 
 		return { error: 'Invalid params' };
 
