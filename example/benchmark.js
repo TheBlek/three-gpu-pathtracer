@@ -4,12 +4,15 @@ import { WebGPUPathTracer } from '../src/webgpu';
 import { WebGLPathTracer } from '../src';
 import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import { disposeModel, loadModelToScene, MODELS } from './utils/ModelLibrary';
+import { LEGO_MODELS } from './utils/LegoModels';
 import { HDRLoader } from 'three/examples/jsm/Addons.js';
 import { ENV_MAPS } from './utils/EnvMaps';
 
 // TODO: make a tool that will go through a matrix of configurations,
 // Plot avg sample count / pixel over time for two implementation (median + min/max + line that connects median values)
 // Add ability to checkout a repository to run the benchmark on that data
+
+const ALL_MODELS = { ...MODELS, ...LEGO_MODELS };
 
 let gui;
 let isProcessingQueue = false;
@@ -292,7 +295,7 @@ function captureImage( renderer ) {
 
 function areParamsValid( params ) {
 
-	return params.model in MODELS && ( params.targetSampleCount > 0 || params.targetTimeSeconds > 0 );
+	return params.model in ALL_MODELS && ( params.targetSampleCount > 0 || params.targetTimeSeconds > 0 );
 
 }
 
@@ -414,7 +417,7 @@ async function runBenchmark( params ) {
 
 	const envMapPromise = new HDRLoader().loadAsync( ENV_MAPS[ 'Measuring Lab' ] );
 
-	const { model, box, error } = await loadModelToScene( scene, renderer, MODELS[ params.model ], () => {} );
+	const { model, box, error } = await loadModelToScene( scene, renderer, ALL_MODELS[ params.model ], () => {} );
 
 	if ( error ) {
 
@@ -489,7 +492,7 @@ function buildGUI() {
 	renderingSettings.add( params, 'bounces', 1, 30 );
 
 	const sceneSettings = gui.addFolder( 'Scene Settings' );
-	sceneSettings.add( params, 'model', Object.keys( MODELS ).sort() ).onChange( v => {
+	sceneSettings.add( params, 'model', Object.keys( ALL_MODELS ).sort() ).onChange( v => {
 
 		window.location.hash = v;
 

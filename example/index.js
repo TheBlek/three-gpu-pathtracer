@@ -82,7 +82,7 @@ init();
 
 async function init() {
 
-	models = MODELS;
+	models = window.MODEL_LIST || MODELS;
 
 	loader = new LoaderElement();
 	loader.attach( document.body );
