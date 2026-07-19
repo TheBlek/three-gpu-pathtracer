@@ -13,6 +13,8 @@ import { ENV_MAPS } from './utils/EnvMaps';
 
 let gui;
 
+const resultsEl = document.getElementById( 'results' );
+
 const params = {
 	// Run settings
 	warmupIterations: 3,
@@ -35,15 +37,96 @@ const params = {
 	// Button property
 	runBenchmark: async function () {
 
-		// TODO: display results
+		const card = document.createElement( 'div' );
+		card.className = 'card';
+		card.textContent = 'Benchmarking...';
+		resultsEl.prepend( card );
+
 		const res = await runBenchmark();
-		console.log( res );
+		fillCard( card, res );
 
 	},
 
 };
 
 params.model = Object.keys( MODELS )[ 0 ];
+
+function formatSamplesPerSecond( samplesPerSecond ) {
+
+	if ( samplesPerSecond > 1000000 ) {
+
+		return ( samplesPerSecond / 1000000 ).toFixed( 3 ) + ' Msamples/s';
+
+	} else if ( samplesPerSecond > 1000 ) {
+
+		return ( samplesPerSecond / 1000 ).toFixed( 3 ) + ' Ksamples/s';
+
+	}
+
+	return samplesPerSecond.toFixed( 3 ) + ' samples/s';
+
+}
+
+function fillCard( card, res ) {
+
+	if ( ! Array.isArray( res ) ) {
+
+		card.classList.add( 'error' );
+		card.textContent = ( res && res.error ) ? res.error : 'Benchmark failed';
+		return;
+
+	}
+
+	// Header: backend, kernel mode (WebGPU only), model, resolution, run count
+	let header = params.isWebGPU ? 'WebGPU' : 'WebGL';
+	if ( params.isWebGPU ) {
+
+		header += params.useMegakernel ? ' · megakernel' : ' · wavefront';
+
+	}
+
+	header += ' · ' + params.model;
+	header += ' · ' + params.resolution + 'px';
+	header += ' · ' + params.iterations + ' runs';
+
+	let html = '<div class="header">' + header + '</div>';
+
+	const throughputs = [];
+	for ( let i = 0; i < res.length; i ++ ) {
+
+		const totalSamples = res[ i ].totalSamples;
+		const elapsedMs = res[ i ].elapsedMs;
+		const samplesPerSecond = ( totalSamples * 1000 ) / elapsedMs;
+		throughputs.push( samplesPerSecond );
+
+		html += '<div class="run">';
+		html += '#' + ( i + 1 ) + ': ';
+		html += ( elapsedMs / 1000 ).toFixed( 3 ) + 's with ';
+		html += formatSamplesPerSecond( samplesPerSecond );
+		html += '</div>';
+
+	}
+
+	let avgThroughput = 0;
+	for ( let i = 0; i < throughputs.length; i ++ ) {
+
+		avgThroughput += throughputs[ i ];
+
+	}
+
+	avgThroughput /= throughputs.length;
+
+	throughputs.sort( ( a, b ) => a - b );
+	const medianThroughput = throughputs[ Math.floor( throughputs.length / 2 ) ];
+
+	html += '<div class="summary">';
+	html += 'avg ' + formatSamplesPerSecond( avgThroughput );
+	html += ' · median ' + formatSamplesPerSecond( medianThroughput );
+	html += '</div>';
+
+	card.innerHTML = html;
+
+}
 
 function areParamsValid() {
 
@@ -59,7 +142,6 @@ async function createRenderer( params ) {
 		await renderer.init();
 		renderer.toneMapping = ACESFilmicToneMapping;
 		renderer.setDrawingBufferSize( params.resolution, params.resolution, 1.0 );
-		document.body.append( renderer.domElement );
 
 		const pathtracer = new WebGPUPathTracer( renderer );
 		pathtracer.useMegakernel( params.useMegakernel );
@@ -76,7 +158,6 @@ async function createRenderer( params ) {
 		const renderer = new WebGLRenderer();
 		renderer.toneMapping = ACESFilmicToneMapping;
 		renderer.setDrawingBufferSize( params.resolution, params.resolution, 1.0 );
-		document.body.append( renderer.domElement );
 
 		const pathtracer = new WebGLPathTracer( renderer );
 		pathtracer.tiles.set( params.tileCount, params.tileCount );
@@ -92,7 +173,6 @@ async function createRenderer( params ) {
 function cleanup( renderer, pathtracer ) {
 
 	pathtracer.dispose();
-	renderer.domElement.remove();
 	renderer.dispose();
 
 }
@@ -113,6 +193,8 @@ async function runIteration( renderer, pathtracer, params ) {
 
 		} else {
 
+			// TODO: this does not seem to work?
+			// FIX
 			const gl = renderer.getContext();
 			const sync = gl.fenceSync( gl.SYNC_GPU_COMMANDS_COMPLETE, 0 );
 			gl.flush();
@@ -145,19 +227,14 @@ async function runIteration( renderer, pathtracer, params ) {
 
 	}
 
-	const cpuEnd = performance.now();
-
 	await waitGpuIdle();
 
 	const end = performance.now();
 
 	const elapsedMs = end - start;
 	const samples = await pathtracer.getDetailedSampleCount();
-	const samplesPerSecond = ( samples.total * 1000 ) / elapsedMs;
 
-	console.log( `cpu time: ${ cpuEnd - start }; gpu time: ${ end - start }` );
-
-	return { totalSamples: samples.total, elapsedMs, samplesPerSecond };
+	return { totalSamples: samples.total, elapsedMs };
 
 }
 
@@ -179,6 +256,7 @@ async function runBenchmark() {
 
 	if ( error ) {
 
+		cleanup( renderer, pathtracer );
 		return { error };
 
 	}

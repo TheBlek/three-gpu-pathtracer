@@ -9,21 +9,57 @@
 				margin: 0;
 				padding: 0;
 				background-color: #111;
+				color: #eee;
+				font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 			}
 
-			.checkerboard {
-				background-image:
-					linear-gradient(45deg, #222 25%, transparent 25%),
-					linear-gradient(-45deg, #222 25%, transparent 25%),
-					linear-gradient(45deg, transparent 75%, #222 75%),
-					linear-gradient(-45deg, transparent 75%, #222 75%);
-				background-size: 20px 20px;
-				background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+			#results {
+				box-sizing: border-box;
+				display: flex;
+				flex-direction: column;
+				gap: 12px;
+				max-width: 720px;
+				margin: 24px;
+			}
+
+			#results:empty {
+				display: none;
+			}
+
+			#results .card {
+				box-sizing: border-box;
+				padding: 16px;
+				line-height: 1.5;
+				font-size: 13px;
+				white-space: pre-wrap;
+				background: #1a1a1a;
+				border: 1px solid #333;
+			}
+
+			#results .header {
+				margin: 0 0 10px;
+				color: #aaa;
+			}
+
+			#results .run {
+				margin: 2px 0;
+			}
+
+			#results .summary {
+				margin: 12px 0 0;
+				padding: 10px 0 0;
+				border-top: 1px solid #333;
+				color: #cfcfcf;
+			}
+
+			#results .error {
+				color: #f66;
 			}
 		</style>
 
 	</head>
 	<body>
+		<div id="results"></div>
 		<script src="./benchmark.js" type="module" defer></script>
 	</body>
 </html>
