@@ -18,7 +18,7 @@
 				display: flex;
 				flex-direction: column;
 				gap: 12px;
-				max-width: 720px;
+				max-width: 960px;
 				margin: 24px;
 			}
 
@@ -34,6 +34,17 @@
 				white-space: pre-wrap;
 				background: #1a1a1a;
 				border: 1px solid #333;
+			}
+
+			#results .card-body {
+				display: flex;
+				gap: 16px;
+				align-items: flex-start;
+			}
+
+			#results .data {
+				flex: 1;
+				min-width: 0;
 			}
 
 			#results .header {
@@ -54,6 +65,24 @@
 
 			#results .error {
 				color: #f66;
+			}
+
+			#results .preview-link {
+				flex-shrink: 0;
+				line-height: 0;
+				background-color: #111;
+				background-image:
+					linear-gradient(45deg, #222 25%, transparent 25%),
+					linear-gradient(-45deg, #222 25%, transparent 25%),
+					linear-gradient(45deg, transparent 75%, #222 75%),
+					linear-gradient(-45deg, transparent 75%, #222 75%);
+				background-size: 20px 20px;
+				background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+			}
+
+			#results .preview {
+				display: block;
+				width: 280px;
 			}
 		</style>
 

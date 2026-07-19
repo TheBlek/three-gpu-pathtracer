@@ -59,11 +59,11 @@ async function onRunBenchmark() {
 	const res = await runBenchmark();
 	fillCard( card, res );
 
-	if ( Array.isArray( res ) ) {
+	if ( res.results ) {
 
 		savedRuns.push( {
 			...params,
-			results: res,
+			results: res.results,
 		} );
 
 	}
@@ -143,13 +143,15 @@ function formatSamplesPerSecond( samplesPerSecond ) {
 
 function fillCard( card, res ) {
 
-	if ( ! Array.isArray( res ) ) {
+	if ( res.error || ! res.results ) {
 
 		card.classList.add( 'error' );
 		card.textContent = ( res && res.error ) ? res.error : 'Benchmark failed';
 		return;
 
 	}
+
+	const results = res.results;
 
 	// Header: backend, kernel mode (WebGPU only), model, resolution, run count
 	let header = params.isWebGPU ? 'WebGPU' : 'WebGL';
@@ -163,21 +165,21 @@ function fillCard( card, res ) {
 	header += ' · ' + params.resolution + 'px';
 	header += ' · ' + params.iterations + ' runs';
 
-	let html = '<div class="header">' + header + '</div>';
+	let dataHtml = '<div class="header">' + header + '</div>';
 
 	const throughputs = [];
-	for ( let i = 0; i < res.length; i ++ ) {
+	for ( let i = 0; i < results.length; i ++ ) {
 
-		const totalSamples = res[ i ].totalSamples;
-		const elapsedMs = res[ i ].elapsedMs;
+		const totalSamples = results[ i ].totalSamples;
+		const elapsedMs = results[ i ].elapsedMs;
 		const samplesPerSecond = ( totalSamples * 1000 ) / elapsedMs;
 		throughputs.push( samplesPerSecond );
 
-		html += '<div class="run">';
-		html += '#' + ( i + 1 ) + ': ';
-		html += ( elapsedMs / 1000 ).toFixed( 3 ) + 's with ';
-		html += formatSamplesPerSecond( samplesPerSecond );
-		html += '</div>';
+		dataHtml += '<div class="run">';
+		dataHtml += '#' + ( i + 1 ) + ': ';
+		dataHtml += ( elapsedMs / 1000 ).toFixed( 3 ) + 's with ';
+		dataHtml += formatSamplesPerSecond( samplesPerSecond );
+		dataHtml += '</div>';
 
 	}
 
@@ -193,12 +195,47 @@ function fillCard( card, res ) {
 	throughputs.sort( ( a, b ) => a - b );
 	const medianThroughput = throughputs[ Math.floor( throughputs.length / 2 ) ];
 
-	html += '<div class="summary">';
-	html += 'avg ' + formatSamplesPerSecond( avgThroughput );
-	html += ' · median ' + formatSamplesPerSecond( medianThroughput );
+	dataHtml += '<div class="summary">';
+	dataHtml += 'avg ' + formatSamplesPerSecond( avgThroughput );
+	dataHtml += ' · median ' + formatSamplesPerSecond( medianThroughput );
+	dataHtml += '</div>';
+
+	let html = '<div class="card-body">';
+	html += '<div class="data">' + dataHtml + '</div>';
+
+	if ( res.imageUrl ) {
+
+		html += '<a class="preview-link" href="' + res.imageUrl + '" target="_blank" rel="noopener">';
+		html += '<img class="preview" src="' + res.imageUrl + '" alt="benchmark preview" />';
+		html += '</a>';
+
+	}
+
 	html += '</div>';
 
 	card.innerHTML = html;
+
+}
+
+function captureImage( renderer ) {
+
+	// Blob URL (not data:) so the preview link can open in a new tab.
+	return new Promise( ( resolve ) => {
+
+		renderer.domElement.toBlob( ( blob ) => {
+
+			if ( ! blob ) {
+
+				resolve( null );
+				return;
+
+			}
+
+			resolve( URL.createObjectURL( blob ) );
+
+		}, 'image/png' );
+
+	} );
 
 }
 
@@ -212,7 +249,7 @@ async function createRenderer( params ) {
 
 	if ( params.isWebGPU ) {
 
-		const renderer = new WebGPURenderer();
+		const renderer = new WebGPURenderer( { preserveDrawingBuffer: true } );
 		await renderer.init();
 		renderer.toneMapping = ACESFilmicToneMapping;
 		renderer.setDrawingBufferSize( params.resolution, params.resolution, 1.0 );
@@ -229,7 +266,7 @@ async function createRenderer( params ) {
 
 	} else {
 
-		const renderer = new WebGLRenderer();
+		const renderer = new WebGLRenderer( { preserveDrawingBuffer: true } );
 		renderer.toneMapping = ACESFilmicToneMapping;
 		renderer.setDrawingBufferSize( params.resolution, params.resolution, 1.0 );
 
@@ -363,11 +400,13 @@ async function runBenchmark() {
 
 	}
 
+	const imageUrl = await captureImage( renderer );
+
 	disposeModel( model );
 
 	cleanup( renderer, pathtracer );
 
-	return results;
+	return { results, imageUrl };
 
 }
 
