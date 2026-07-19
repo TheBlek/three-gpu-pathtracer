@@ -12,8 +12,10 @@ import { ENV_MAPS } from './utils/EnvMaps';
 // Add ability to checkout a repository to run the benchmark on that data
 
 let gui;
+let isBenchmarkRunning = false;
 
 const resultsEl = document.getElementById( 'results' );
+const savedRuns = [];
 
 const params = {
 	// Run settings
@@ -28,28 +30,100 @@ const params = {
 	tileCount: 3,
 
 	resolution: 1024,
-	model: '',
+	model: Object.keys( MODELS )[ 0 ],
 
 	// Stop condition
 	targetTimeSeconds: 10, // TODO: remove?
 	targetSampleCount: 64,
 
-	// Button property
-	runBenchmark: async function () {
-
-		const card = document.createElement( 'div' );
-		card.className = 'card';
-		card.textContent = 'Benchmarking...';
-		resultsEl.prepend( card );
-
-		const res = await runBenchmark();
-		fillCard( card, res );
-
-	},
-
+	// Buttons
+	runBenchmark: onRunBenchmark,
+	downloadCSV: downloadCSV,
 };
 
-params.model = Object.keys( MODELS )[ 0 ];
+async function onRunBenchmark() {
+
+	if ( isBenchmarkRunning ) {
+
+		return;
+
+	}
+
+	isBenchmarkRunning = true;
+
+	const card = document.createElement( 'div' );
+	card.className = 'card';
+	card.textContent = 'Benchmarking...';
+	resultsEl.prepend( card );
+
+	const res = await runBenchmark();
+	fillCard( card, res );
+
+	if ( Array.isArray( res ) ) {
+
+		savedRuns.push( {
+			...params,
+			results: res,
+		} );
+
+	}
+
+	isBenchmarkRunning = false;
+
+}
+
+function downloadCSV() {
+
+	if ( savedRuns.length === 0 ) {
+
+		return;
+
+	}
+
+	let csv = 'backend,useMegakernel,model,resolution,bounces,tileCount,targetSampleCount,warmupIterations,iterations,runIndex,totalSamples,elapsedMs,samplesPerSecond\n';
+
+	for ( let i = 0; i < savedRuns.length; i ++ ) {
+
+		const run = savedRuns[ i ];
+		const backend = run.isWebGPU ? 'WebGPU' : 'WebGL';
+
+		for ( let j = 0; j < run.results.length; j ++ ) {
+
+			const totalSamples = run.results[ j ].totalSamples;
+			const elapsedMs = run.results[ j ].elapsedMs;
+			const samplesPerSecond = ( totalSamples * 1000 ) / elapsedMs;
+
+			csv += backend + ',';
+			csv += run.useMegakernel + ',';
+			csv += '"' + run.model + '",';
+			csv += run.resolution + ',';
+			csv += run.bounces + ',';
+			csv += run.tileCount + ',';
+			csv += run.targetSampleCount + ',';
+			csv += run.warmupIterations + ',';
+			csv += run.iterations + ',';
+			csv += ( j + 1 ) + ',';
+			csv += totalSamples + ',';
+			csv += elapsedMs + ',';
+			csv += samplesPerSecond + '\n';
+
+		}
+
+	}
+
+	const blob = new Blob( [ csv ], { type: 'text/csv' } );
+	const url = URL.createObjectURL( blob );
+
+	const anchor = document.createElement( 'a' );
+	anchor.href = url;
+	anchor.download = 'benchmark.csv';
+	document.body.appendChild( anchor );
+	anchor.click();
+	anchor.remove();
+
+	URL.revokeObjectURL( url );
+
+}
 
 function formatSamplesPerSecond( samplesPerSecond ) {
 
@@ -334,6 +408,7 @@ function buildGUI() {
 	// TODO: physical camera settings?
 
 	gui.add( params, 'runBenchmark' );
+	gui.add( params, 'downloadCSV' );
 
 }
 
